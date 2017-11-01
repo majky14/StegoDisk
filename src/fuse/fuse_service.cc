@@ -30,6 +30,7 @@
 
 #include <ctime>
 #include <string>
+#include <thread>
 
 #include "file_management/carrier_files_manager.h"
 #include "encoders/hamming_encoder.h"
@@ -65,10 +66,9 @@ static int sfs_read(const char *path, char *buf, size_t size, off_t offset,
                     struct fuse_file_info *fi);
 static int sfs_write(const char *path, const char *buf, size_t size,
                      off_t offset, struct fuse_file_info *fi);
+static int sfs_truncate(const char *path, off_t size);
 static void sfs_destroy(void* unused);
 static void* sfs_init(fuse_conn_info *conn);
-static void fuseSignalHandler(int sig, siginfo_t *siginfo, void *context);
-//static void attachVirtualDisk();
 
 stego_disk::StegoStorage* FuseService::stego_storage_ = nullptr;
 stego_disk::uint64 FuseService::capacity_ = 0;
@@ -99,7 +99,7 @@ int FuseService::Init(stego_disk::StegoStorage *stego_storage) {
   stegofs_ops.rename = sfs_rename;
   stegofs_ops.chmod	= sfs_chmod;
   stegofs_ops.chown	= sfs_chown;
-  //stegofs_ops.truncate	= sfs_truncate;
+  stegofs_ops.truncate	= sfs_truncate;
   //stegofs_ops.utimens     = sfs_utimens;
   stegofs_ops.create = sfs_create;
   stegofs_ops.open = sfs_open;
@@ -110,112 +110,45 @@ int FuseService::Init(stego_disk::StegoStorage *stego_storage) {
   return 0;
 }
 
-int FuseService::MountFuse(const std::string &mount_point) {
+void FuseService::T() {
 
-  mount_point_ = mount_point;
+    char *argv[10];
+    memset(argv, 0, 10 * sizeof(char*));
 
+    char *mnt_pt = new (nothrow) char[mount_point_.size() + 1];
+    if (!mnt_pt) {
+        return;
+    }
+    strcpy(mnt_pt, mount_point_.c_str());
 
-  char *argv[10];
-  memset(argv, 0, 10 * sizeof(char*));
+    LOG_INFO("mount point: " << mnt_pt);
 
-  char *mnt_pt = new (nothrow) char[mount_point_.size() + 1];
-  if (!mnt_pt) {
-    return -1;
-  }
-  strcpy(mnt_pt, mount_point_.c_str());
-
-  LOG_INFO("mount point: " << mnt_pt);
-
-  char debug[] = "-d";
-
-
-  argv[0] = (char*)"fuse";
-  argv[1] = mnt_pt;
-  argv[2] = debug;
-  argv[3] = (char*)"-o";
-  argv[4] = (char*)"allow_other";
-  argv[5] = NULL;
-  int argc = 5;
-  //TODO: add nobrowse param
-
-  /*
     argv[0] = "fuse";
     argv[1] = mnt_pt;
-    argv[2] = "-o";
-    argv[3] = "allow_other";
-    argv[4] = NULL;
-    int argc = 4;
-*/
+    argv[2] = "-f";
+    argv[3] = "-o";
+    argv[4] = "allow_other";
+    argv[5] = NULL;
+    int argc = 5;
 
+    LOG_INFO("calling fuse_main");
+    int fuse_stat;
 
-  fuse_mounted_ = false;
+    fuse_stat = fuse_main(argc, argv, &stegofs_ops, nullptr);
+    LOG_INFO("fuse_main returned " << fuse_stat);
+}
 
-  // turn over control to fuse
-  LOG_INFO("calling fuse_main");
-  int fuse_stat;
+int FuseService::MountFuse(const std::string &mount_point) {
 
-  pid_t pid = fork();
+    mount_point_ = mount_point;
 
-  if (pid >= 0) {
-    LOG_INFO("fork succeed");
-    if (pid == 0) {
+    fuse_mounted_ = false;
 
-      //freopen("/dev/null", "w", stderr);
+    std::thread fuseThread (FuseService::T);
+    sleep(1);
+    fuseThread.detach();
 
-      LOG_INFO("fuse pid: " << getpid());
-
-      // TODO: add signal handlers to
-      //
-
-      fuse_stat = fuse_main(argc, argv, &stegofs_ops, nullptr);
-      LOG_INFO("fuse_main returned " << fuse_stat);
-      _exit(fuse_stat);
-    } else {
-      //LOG_INFO("main pid: " << getpid());
-      fuse_proc_pid_ = pid;
-
-
-      // TODO: toto presunut este nad fork a v pid=0 vyclearovat
-      struct sigaction act;
-      memset (&act, '\0', sizeof(act));
-      /* Use the sa_sigaction field because the handles has two additional parameters */
-      act.sa_sigaction = &fuseSignalHandler;
-      /* The SA_SIGINFO flag tells sigaction() to use the sa_sigaction field, not sa_handler. */
-      act.sa_flags = SA_SIGINFO;
-      if (sigaction(SIGUSR1, &act, nullptr) < 0) {
-        LOG_ERROR("sigaction failed");
-      }
-      if (sigaction(SIGUSR2, &act, nullptr) < 0) {
-        LOG_ERROR("sigaction failed");
-      }
-      /*
-            if (sigaction(SIGCHLD, &act, NULL) < 0) {
-                LOG_ERROR("sigaction failed");
-            }
-            */
-      /*
-            signal(SIGUSR1, fuseInitialisedSignalHandler);
-            signal(SIGUSR2, fuseEndedSignalHandler);
-            signal(SIGCHLD, fuseSigChldSignalHandler);
-            */
-      LOG_INFO("wait for fuse pid");
-      waitpid(pid, nullptr, 0);
-      LOG_INFO("wait for fuse pid ended");
-      fuse_mounted_ = false;
-      //      if (delegate_ != nullptr) {
-      //        delegate_->fuseUnmounted();
-      //      }
-      return 0;
-    }
-  } else {
-    LOG_INFO("fork failed");
-    return -1;
-  }
-
-  //fuse_stat = fuse_main_realargc, argv, &stegofs_ops, 0. NULL);
-
-
-  //return fuse_stat;
+    return 0;
 }
 
 
@@ -231,7 +164,6 @@ static int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
   if (!FuseService::fuse_mounted_) {
     FuseService::fuse_mounted_ = true;
-    kill(getppid(), SIGUSR1);
   }
 
   filler(buf, ".", NULL, 0);           /* Current directory (.)  */
@@ -242,11 +174,11 @@ static int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 }
 
 static int sfs_getattr(const char *path, struct stat *stbuf) {
-  memset(stbuf, 0, sizeof(struct stat));
+//  memset(stbuf, 0, sizeof(struct stat));
 
   if (strcmp(path, "/") == 0) { /* The root directory of our file system. */
     stbuf->st_mode = S_IFDIR | 0755;
-    stbuf->st_nlink = 3;
+    stbuf->st_nlink = 2;
   } else if (strcmp(path, file_path) == 0) { /* The only file we have. */
     stbuf->st_mode = S_IFREG | 0777;
     stbuf->st_nlink = 1;
@@ -286,6 +218,10 @@ static int sfs_chmod(const char *, mode_t ) { // const char *path, mode_t mode
   return 0;
 }
 static int sfs_chown(const char *, uid_t , gid_t ) { // const char *path, uid_t uid, gid_t gid
+  return 0;
+}
+
+static int sfs_truncate(const char *, off_t) {
   return 0;
 }
 
@@ -385,160 +321,25 @@ static int sfs_write(const char *path, const char *buf, size_t size,
 
 static void* sfs_init(struct fuse_conn_info *) {
   LOG_DEBUG("SFS_INIT CALLED");
-  //kill(getppid(), SIGUSR1);
   return nullptr;
 }
 
 static void sfs_destroy(void*) {
   LOG_DEBUG("SFS_DESTROY CALLED @pid: " << getpid());
   LOG_DEBUG("signaling parrent with id: " << getppid());
-  //kill(getppid(), SIGUSR2);
-  kill(getppid(), SIGUSR2);
 }
 
-//static void fuseInitialisedSignalHandler() {
-//  LOG_INFO("sig1 handler called");
-
-//  /*
-//    if (FuseService::delegate_ != NULL) {
-//        FuseService::delegate_->fuse_mounted_(true);
-//    }
-//    */
-
-//  //QtConcurrent::run(attachVirtualDisk);
-
-//}
-
-//static void fuseEndedSignalHandler()
-//{
-//LOG_DEBUG("finished signal handler @pid: " << getpid() << ", with signal:" << signum);
-/*
-    if (FuseService::destroyCallback != NULL) {
-        FuseService::destroyCallback();
-    }
-    */
-//}
-
-static void fuseSigChldSignalHandler() {
-  LOG_DEBUG("sigchld called");
-  if (FuseService::fuse_proc_pid_) {
-
-    LOG_DEBUG("waitpid called");
-    waitpid(FuseService::fuse_proc_pid_, NULL, 0);
-    LOG_DEBUG("waitpid ended");
-
-  }
-
-  FuseService::fuse_mounted_ = false;
-  //  if (FuseService::delegate_ != nullptr) {
-  //    FuseService::delegate_->fuseUnmounted();
-  //  }
-
-}
-
-
-//static void attachVirtualDisk() {
-
-//  if (FuseService::child_process_) {
-//    // TODO: do sth
-//  }
-
-//  QString virtual_disk_file_path =
-//      QDir(FuseService::mount_point_).absoluteFilePath(
-//        QString(FuseService::virtual_file_name_));
-//  LOG_INFO("VDF PATH: " << virtual_disk_file_path.toStdString());
-//  LOG_INFO("file exists: " <<
-//           QFile().exists(QDir(FuseService::mount_point_).absoluteFilePath(
-//                            QString(FuseService::virtual_file_name_))));
-
-//  QProcess *attach = new QProcess();
-//  FuseService::child_process_ = attach;
-//  QStringList args;
-//  args.push_back("attach");
-//  args.push_back(virtual_disk_file_path);
-//  args.push_back("-imagekey");
-//  args.push_back("diskimage-class=CRawDiskImage");
-//  //args.push_back("-nomount");
-
-//  LOG_INFO("calling attach");
-//  //QObject::connect(attach, SIGNAL(finished(int,QProcess::ExitStatus)), this, SLOT(onAttachFinished(int,QProcess::ExitStatus)));
-//  attach->setProcessChannelMode(QProcess::MergedChannels);
-//  attach->start("hdiutil", args);
-//  attach->waitForFinished(60000);
-//  //int retval = QProcess::execute("hdiutil", args);
-//  //LOG_INFO("returned: " << retval);
-
-
-//  //attach->readAll()
-//  QByteArray output = attach->readAllStandardOutput();
-//  QString diskName = QString(output).trimmed();
-//  LOG_INFO("trimmed:" << diskName.toStdString());
-//  if (diskName.startsWith("/dev/")) {
-//    LOG_INFO("disk name ok");
-//  }
-//  LOG_INFO("exit code: " << attach->exitCode());
-//  LOG_INFO("exit status: " << attach->exitStatus());
-
-//  // exit code 1 a "hdiutil: attach failed - no mountable file systems"
-//  // exit code 0 a /dev/diskX - ked nomount
-
-//  /*
-//    LOG_INFO("byte array len: " << output.size());
-//    LOG_INFO("output: o'" << QString(output).toStdString() << "'o");
-//    QString outStr = QString(output);
-//    QStringList outStringList = outStr.split("\n");
-//    LOG_INFO("lines: " << outStringList.size());
-//    if (outStringList.size()>0) {
-//        LOG_INFO("1.: l'" << outStringList.at(0).toStdString() << "'l");
-//        if (outStringList.at(0).startsWith("/dev/disk")) {
-//            LOG_INFO("dobry riadok muehehe");
-//            QString cool = outStringList.at(0).trimmed();
-//        }
-//    }
-//    output = attach->readAllStandardError();
-//    LOG_INFO("errout: e'" << QString(output).toStdString() << "'e");
-//    LOG_INFO("exit code: " << attach->exitCode());
-//    LOG_INFO("exit status: " << attach->exitStatus());
-//    */
-
-//}
-
-static void fuseSignalHandler(int sig, siginfo_t *siginfo, void *) {
-  LOG_INFO("SIGNAL HANDLER CALLED sig: " << sig << ", pid: "
-           << siginfo->si_pid << ", fusepid: " <<
-           FuseService::fuse_proc_pid_ << ", status: " << siginfo->si_status);
-
-  if (siginfo->si_pid == FuseService::fuse_proc_pid_) {
-
-    switch (sig) {
-      case SIGUSR1:
-        //QtConcurrent::run(fuseInitialisedSignalHandler);
-        break;
-      case SIGCHLD:
-        fuseSigChldSignalHandler();
-        break;
-    }
-
-    return;
-  }
-
-  //  if (FuseService::child_process_) {
-  //    if (siginfo->si_pid == FuseService::child_process_->pid()) {
-  //      LOG_INFO("program: " <<
-  //               FuseService::child_process_->program().toStdString());
-  //      QByteArray output = FuseService::child_process_->readAllStandardOutput();
-  //      LOG_INFO("output: " << QString(output).toStdString());
-  //      output = FuseService::child_process_->readAllStandardError();
-  //      LOG_INFO("std err output: " << QString(output).toStdString());
-  //      LOG_INFO("exit code: " << FuseService::child_process_->exitCode());
-  //      LOG_INFO("exit status: " << FuseService::child_process_->exitStatus());
-  //    }
-  //  }
-
-}
-
-int FuseService::UnmountFuse(const std::string &mount_point_) {
+int FuseService::UnmountFuse(const std::string &mount_point) {
   LOG_INFO("unmounting: " << mount_point_);
+  if (mount_point != mount_point_) {
+    LOG_ERROR("unmounting: " << mount_point << " not mounted!");
+    return -1;
+  }
+  FuseService::stego_storage_->Save();
   fuse_mounted_ = false; //TODO (Matus) nastavit podla vratenej hodnoty
-  return umount(mount_point_.c_str());
+
+//  return umount(mount_point_.c_str());
+
+   system("fusermount -u /tmp/example");
+   return 0;
 }

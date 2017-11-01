@@ -8,7 +8,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 if(NOT TEST_DIR)
 	if(NOT WIN32)
-		set(DST_DIRECTORY /tmp/)
+		set(DST_DIRECTORY /tmp/example/)
 	else()
 		set(DST_DIRECTORY "$ENV{TEMP}/")
 	endif()

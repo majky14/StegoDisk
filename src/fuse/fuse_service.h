@@ -20,6 +20,7 @@
 #endif
 
 #include <string>
+#include <thread>
 
 //#include "fuse_service_delegate.h"
 #include "logging/logger.h"
@@ -41,6 +42,7 @@ public:
   static pid_t fuse_proc_pid_;
 
   static int Init(stego_disk::StegoStorage *stego_storage);
+  static void T();
   static int MountFuse(const std::string &mount_point);
   static int UnmountFuse(const std::string &mount_point);
 

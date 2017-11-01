@@ -11,6 +11,9 @@
 #include <algorithm>
 #include <string>
 #include <cstring>
+#include <thread>
+
+#include <unistd.h>
 
 #include "stego_storage.h"
 #include "logging/logger.h"
@@ -115,9 +118,9 @@ int main(int argc, char *argv[]) {
     return false;
   }
   stego_storage->Configure();
-  LOG_DEBUG("Opening storage");
+  LOG_INFO("Opening storage");
   stego_storage->Open(dir, (password) ? PASSWORD : "");
-  LOG_DEBUG("Loading storage");
+  LOG_INFO("Loading storage");
   stego_storage->Load();
   size = stego_storage->GetSize();
 
@@ -128,43 +131,55 @@ int main(int argc, char *argv[]) {
   if (FuseService::MountFuse(DST_DIRECTORY) != 0) {
     return false;
   }
+  LOG_INFO("After mount");
 
-  std::cout << "Storage size = " << size << "B" << std::endl;
+  LOG_INFO("Storage size = " << size << "B")
   if( gen_file_size == 0) gen_file_size = size;
-  std::string input;
+  std::string input("nejaky uplne iny neznamy string");
   std::string output;
   std::string input_file = std::string(DST_DIRECTORY) +
                            std::string(FuseService::virtual_file_name_,
                                        std::strlen(FuseService::virtual_file_name_));
-//  LOG_DEBUG("Generating random string");
+//  LOG_INFO("Generating random string");
 //  GenerateRandomString(&input, gen_file_size);
-//  LOG_DEBUG("Writing to the storage");
+//  LOG_INFO("Writing to the storage on file: " << input_file);
 //  std::ofstream ofs(input_file.c_str());
 //  if (!ofs.is_open()) {
 //    return true;
 //  }
 //  ofs << input;
 //  ofs.close();
-//  LOG_DEBUG("Saving storage");
-  stego_storage->Save();
+//  LOG_INFO("Saving storage");
+//  stego_storage->Write(&(input[0]), 0, input.size());
+//  stego_storage->Save();
+  sleep(30);
+//  LOG_INFO("Loading storage");
+//  stego_storage->Load();
+//  output.resize(input.size());
+//  LOG_INFO("Reading from the storage");
+//  stego_storage->Read(&(output[0]), 0, input.size());
+//  stego_storage->Save();
 
-  LOG_DEBUG("Loading storage");
-  stego_storage->Load();
-  output.resize(input.size());
-  LOG_DEBUG("Reading from the storage");
-  stego_storage->Read(&(output[0]), 0, input.size());
-  stego_storage->Save();
   FuseService::UnmountFuse(DST_DIRECTORY);
+    stego_storage->Configure();
+    LOG_INFO("Opening storage");
+    stego_storage->Open(dir, (password) ? PASSWORD : "");
+    LOG_INFO("Loading storage");
+    stego_storage->Load();
+    size = stego_storage->GetSize();
+    output.resize(size);
+    LOG_INFO("Reading from the storage");
+    stego_storage->Read(&(output[0]), 0, output.size());
+    LOG_INFO("Output: '" << output << "', size: " << output.size());
 
   if(test_directory) FileManager::RemoveDirectory(dir);
 
   FileManager::RemoveDirectory(input_file);
 
-  if (input != output) {
-    LOG_ERROR("Not equal! Input size: " << input.size() <<
-              " output size: " << output.size());
-    error = true;
-  }
+//  if (input != output) {
+//    LOG_ERROR("Not equal! Input size: " << input.size() << " output size: " << output.size());
+//    error = true;
+//  }
 
   return error;
 }
