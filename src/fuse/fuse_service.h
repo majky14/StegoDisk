@@ -26,27 +26,30 @@
 #include "logging/logger.h"
 #include "stego_storage.h"
 
-static struct fuse_operations stegofs_ops;
+namespace Stego {
+    static struct fuse_operations stegofs_ops;
 
-class FuseService {
+    class FuseService {
 
-public:
-  FuseService();
+    public:
+        FuseService();
 
 //  static FuseServiceDelegate* delegate_;
-  static stego_disk::StegoStorage* stego_storage_;
-  static stego_disk::uint64 capacity_;
-  static bool fuse_mounted_;
-  static const char* virtual_file_name_;
-  static std::string mount_point_;
-  static pid_t fuse_proc_pid_;
+        static stego_disk::StegoStorage *stego_storage_;
+        static stego_disk::uint64 capacity_;
+        static bool fuse_mounted_;
+        static const char *virtual_file_name_;
 
-  static int Init(stego_disk::StegoStorage *stego_storage);
-  static void T();
-  static int MountFuse(const std::string &mount_point);
-  static int UnmountFuse(const std::string &mount_point);
+        static int Init(stego_disk::StegoStorage *stego_storage);
 
-};
+        static void FuseThread(const std::string &mount_point);
+
+        static int MountFuse(const std::string &mount_point);
+
+        static void UnmountFuse(const std::string &mount_point);
+
+    };
+}
 
 #endif // STEGODISK_FUSE_FUSESERVICE_H_
 
