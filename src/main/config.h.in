@@ -1,0 +1,8 @@
+#ifndef CONFIG_H_IN
+#define CONFIG_H_IN
+
+#cmakedefine SRC_DIRECTORY "@SRC_DIRECTORY@"
+#cmakedefine DST_DIRECTORY "@DST_DIRECTORY@"
+#cmakedefine PASSWORD "@PASSWORD@"
+
+#endif // CONFIG_H_IN

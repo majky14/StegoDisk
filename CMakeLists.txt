@@ -368,3 +368,5 @@ endif()
 if(BUILD_TESTS)
   add_subdirectory(src/tests)
 endif()
+
+add_subdirectory(src/main)

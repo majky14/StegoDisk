@@ -42,8 +42,6 @@ namespace Stego {
 
         static int Init(stego_disk::StegoStorage *stego_storage);
 
-        static void FuseThread(const std::string &mount_point);
-
         static int MountFuse(const std::string &mount_point);
 
         static void UnmountFuse(const std::string &mount_point);
