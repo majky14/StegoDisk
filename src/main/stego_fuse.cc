@@ -13,7 +13,7 @@ bool LoggerInit() {
         logging_level.assign(env_logging_level);
     }
 
-    Logger::SetVerbosityLevel(logging_level, std::string("cout"));
+    Logger::SetVerbosityLevel(logging_level, std::string("/tmp/stego_fuse_log.txt"));
 
     return true;
 }
@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
             if (++i < argc) {
                 dir = argv[i];
             } else {
-                LOG_ERROR("--fuse_directory option requires one argument.");
+                LOG_ERROR("--fuse option requires one argument.");
                 return -1;
             }
         } else if ((arg == "-i") || (arg == "--img")) {
